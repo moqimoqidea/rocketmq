@@ -16,26 +16,54 @@
  */
 package org.apache.rocketmq.broker.latency;
 
+import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.common.AbstractBrokerRunnable;
+import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.common.future.FutureTaskExt;
+import org.apache.rocketmq.common.utils.ThreadUtils;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.netty.RequestTask;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 
+/**
+ * BrokerFastFailure will cover {@link BrokerController#getSendThreadPoolQueue()} and {@link
+ * BrokerController#getPullThreadPoolQueue()}
+ */
 public class BrokerFastFailure {
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
-    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
-        "BrokerFastFailureScheduledThread"));
+    private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
+    private final ScheduledExecutorService scheduledExecutorService;
     private final BrokerController brokerController;
+
+    private volatile long jstackTime = System.currentTimeMillis();
+
+    private final List<Pair<BlockingQueue<Runnable>, Supplier<Long>>> cleanExpiredRequestQueueList = new ArrayList<>();
 
     public BrokerFastFailure(final BrokerController brokerController) {
         this.brokerController = brokerController;
+        initCleanExpiredRequestQueueList();
+        this.scheduledExecutorService = ThreadUtils.newScheduledThreadPool(1,
+            new ThreadFactoryImpl("BrokerFastFailureScheduledThread", true,
+                brokerController == null ? null : brokerController.getBrokerConfig()));
+    }
+
+    private void initCleanExpiredRequestQueueList() {
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getSendThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getPullThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getLitePullThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInLitePullQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getHeartbeatThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getEndTransactionThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInTransactionQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getAckThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInAckQueue()));
+        cleanExpiredRequestQueueList.add(new Pair<>(this.brokerController.getAdminBrokerThreadPoolQueue(), () -> this.brokerController.getBrokerConfig().getWaitTimeMillsInAdminBrokerQueue()));
     }
 
     public static RequestTask castRunnable(final Runnable runnable) {
@@ -45,16 +73,16 @@ public class BrokerFastFailure {
                 return (RequestTask) object.getRunnable();
             }
         } catch (Throwable e) {
-            log.error(String.format("castRunnable exception, %s", runnable.getClass().getName()), e);
+            LOGGER.error(String.format("castRunnable exception, %s", runnable.getClass().getName()), e);
         }
 
         return null;
     }
 
     public void start() {
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+        this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.brokerController.getBrokerConfig()) {
             @Override
-            public void run() {
+            public void run0() {
                 if (brokerController.getBrokerConfig().isBrokerFastFailureEnable()) {
                     cleanExpiredRequest();
                 }
@@ -63,6 +91,7 @@ public class BrokerFastFailure {
     }
 
     private void cleanExpiredRequest() {
+
         while (this.brokerController.getMessageStore().isOSPageCacheBusy()) {
             try {
                 if (!this.brokerController.getSendThreadPoolQueue().isEmpty()) {
@@ -72,7 +101,13 @@ public class BrokerFastFailure {
                     }
 
                     final RequestTask rt = castRunnable(runnable);
-                    rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format("[PCBUSY_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: %sms, size of queue: %d", System.currentTimeMillis() - rt.getCreateTimestamp(), this.brokerController.getSendThreadPoolQueue().size()));
+                    if (rt != null) {
+                        rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format(
+                            "[PCBUSY_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: %sms, "
+                                + "size of queue: %d",
+                            System.currentTimeMillis() - rt.getCreateTimestamp(),
+                            this.brokerController.getSendThreadPoolQueue().size()));
+                    }
                 } else {
                     break;
                 }
@@ -80,17 +115,9 @@ public class BrokerFastFailure {
             }
         }
 
-        cleanExpiredRequestInQueue(this.brokerController.getSendThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue());
-
-        cleanExpiredRequestInQueue(this.brokerController.getPullThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue());
-
-        cleanExpiredRequestInQueue(this.brokerController.getHeartbeatThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue());
-
-        cleanExpiredRequestInQueue(this.brokerController.getEndTransactionThreadPoolQueue(), this
-            .brokerController.getBrokerConfig().getWaitTimeMillsInTransactionQueue());
+        for (Pair<BlockingQueue<Runnable>, Supplier<Long>> pair : cleanExpiredRequestQueueList) {
+            cleanExpiredRequestInQueue(pair.getObject1(), pair.getObject2().get());
+        }
     }
 
     void cleanExpiredRequestInQueue(final BlockingQueue<Runnable> blockingQueue, final long maxWaitTimeMillsInQueue) {
@@ -111,6 +138,10 @@ public class BrokerFastFailure {
                         if (blockingQueue.remove(runnable)) {
                             rt.setStopRun(true);
                             rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format("[TIMEOUT_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: %sms, size of queue: %d", behind, blockingQueue.size()));
+                            if (System.currentTimeMillis() - jstackTime > 15000) {
+                                jstackTime = System.currentTimeMillis();
+                                LOGGER.warn("broker jstack \n " + UtilAll.jstack());
+                            }
                         }
                     } else {
                         break;
@@ -121,6 +152,11 @@ public class BrokerFastFailure {
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    public synchronized void addCleanExpiredRequestQueue(BlockingQueue<Runnable> cleanExpiredRequestQueue,
+        Supplier<Long> maxWaitTimeMillsInQueueSupplier) {
+        cleanExpiredRequestQueueList.add(new Pair<>(cleanExpiredRequestQueue, maxWaitTimeMillsInQueueSupplier));
     }
 
     public void shutdown() {

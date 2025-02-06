@@ -185,7 +185,7 @@ msgId一定是全局唯一标识符，但是实际使用中，可能会存在相
 | brokerIP2 | 跟 brokerIP1 一样                         | 存在主从 broker 时，如果在 broker 主节点上配置了 brokerIP2 属性，broker 从节点会连接主节点配置的 brokerIP2 进行同步  |
 | brokerName        | null                         | broker 的名称                           |
 | brokerClusterName                     | DefaultCluster                  | 本 broker 所属的 Cluster 名称           |
-| brokerId             | 0                              | broker id, 0 表示 master, 其他的正整数表示 slave                                                 |
+| brokerId             | 0                              | broker id，0 表示 master，其他的正整数表示 slave                                                 |
 | storePathRootDir                         | $HOME/store/                   | 存储根路径                                            |
 | storePathCommitLog                      | $HOME/store/commitlog/                              | 存储 commit log 的路径                                                |
 | mappedFileSizeCommitLog     | 1024 * 1024 * 1024(1G) | commit log 的映射文件大小                                       |​ 
@@ -209,7 +209,7 @@ msgId一定是全局唯一标识符，但是实际使用中，可能会存在相
 
 ### 5.1 客户端寻址方式
 
-RocketMQ可以令客户端找到Name Server, 然后通过Name Server再找到Broker。如下所示有多种配置方式，优先级由高到低，高优先级会覆盖低优先级。
+RocketMQ可以令客户端找到Name Server，然后通过Name Server再找到Broker。如下所示有多种配置方式，优先级由高到低，高优先级会覆盖低优先级。
 
 - 代码中指定Name Server地址，多个namesrv地址之间用分号分割   
 
@@ -253,7 +253,7 @@ DefaultMQProducer、TransactionMQProducer、DefaultMQPushConsumer、DefaultMQPul
 | clientIP                      | 本机IP  | 客户端本机IP地址，某些机器会发生无法识别客户端IP地址情况，需要应用在代码中强制指定 |
 | instanceName                  | DEFAULT | 客户端实例名称，客户端创建的多个Producer、Consumer实际是共用一个内部实例（这个实例包含网络连接、线程资源等） |
 | clientCallbackExecutorThreads | 4       | 通信层异步回调线程数                                         |
-| pollNameServerInteval         | 30000   | 轮询Name Server间隔时间，单位毫秒                            |
+| pollNameServerInterval        | 30000   | 轮询Name Server间隔时间，单位毫秒                            |
 | heartbeatBrokerInterval       | 30000   | 向Broker发送心跳间隔时间，单位毫秒                           |
 | persistConsumerOffsetInterval | 5000    | 持久化Consumer消费进度间隔时间，单位毫秒                     |
 
