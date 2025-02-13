@@ -17,6 +17,9 @@
 package org.apache.rocketmq.store;
 
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageConst;
 
 public class DispatchRequest {
     private final String topic;
@@ -36,6 +39,14 @@ public class DispatchRequest {
     private byte[] bitMap;
 
     private int bufferSize = -1;//the buffer size maybe larger than the msg size if the message is wrapped by something
+
+    // for batch consume queue
+    private long  msgBaseOffset = -1;
+    private short batchSize = 1;
+
+    private long nextReputFromOffset = -1;
+
+    private String offsetId;
 
     public DispatchRequest(
         final String topic,
@@ -58,6 +69,7 @@ public class DispatchRequest {
         this.tagsCode = tagsCode;
         this.storeTimestamp = storeTimestamp;
         this.consumeQueueOffset = consumeQueueOffset;
+        this.msgBaseOffset = consumeQueueOffset;
         this.keys = keys;
         this.uniqKey = uniqKey;
 
@@ -65,6 +77,22 @@ public class DispatchRequest {
         this.preparedTransactionOffset = preparedTransactionOffset;
         this.success = true;
         this.propertiesMap = propertiesMap;
+    }
+
+    public DispatchRequest(String topic, int queueId, long consumeQueueOffset, long commitLogOffset, int size, long tagsCode) {
+        this.topic = topic;
+        this.queueId = queueId;
+        this.commitLogOffset = commitLogOffset;
+        this.msgSize = size;
+        this.tagsCode = tagsCode;
+        this.storeTimestamp = 0;
+        this.consumeQueueOffset = consumeQueueOffset;
+        this.keys = "";
+        this.uniqKey = null;
+        this.sysFlag = 0;
+        this.preparedTransactionOffset = 0;
+        this.success = false;
+        this.propertiesMap = null;
     }
 
     public DispatchRequest(int size) {
@@ -159,8 +187,24 @@ public class DispatchRequest {
         this.bitMap = bitMap;
     }
 
+    public short getBatchSize() {
+        return batchSize;
+    }
+
+    public void setBatchSize(short batchSize) {
+        this.batchSize = batchSize;
+    }
+
     public void setMsgSize(int msgSize) {
         this.msgSize = msgSize;
+    }
+
+    public long getMsgBaseOffset() {
+        return msgBaseOffset;
+    }
+
+    public void setMsgBaseOffset(long msgBaseOffset) {
+        this.msgBaseOffset = msgBaseOffset;
     }
 
     public int getBufferSize() {
@@ -169,5 +213,47 @@ public class DispatchRequest {
 
     public void setBufferSize(int bufferSize) {
         this.bufferSize = bufferSize;
+    }
+
+    public long getNextReputFromOffset() {
+        return nextReputFromOffset;
+    }
+
+    public void setNextReputFromOffset(long nextReputFromOffset) {
+        this.nextReputFromOffset = nextReputFromOffset;
+    }
+
+    public String getOffsetId() {
+        return offsetId;
+    }
+
+    public void setOffsetId(String offsetId) {
+        this.offsetId = offsetId;
+    }
+
+    public boolean containsLMQ() {
+        if (!MixAll.topicAllowsLMQ(topic)) {
+            return false;
+        }
+        if (null == propertiesMap || propertiesMap.isEmpty()) {
+            return false;
+        }
+        String lmqNames = propertiesMap.get(MessageConst.PROPERTY_INNER_MULTI_DISPATCH);
+        String lmqOffsets = propertiesMap.get(MessageConst.PROPERTY_INNER_MULTI_QUEUE_OFFSET);
+        return !StringUtils.isBlank(lmqNames) && !StringUtils.isBlank(lmqOffsets);
+    }
+
+    @Override
+    public String toString() {
+        return "DispatchRequest{" +
+                "topic='" + topic + '\'' +
+                ", queueId=" + queueId +
+                ", commitLogOffset=" + commitLogOffset +
+                ", msgSize=" + msgSize +
+                ", success=" + success +
+                ", msgBaseOffset=" + msgBaseOffset +
+                ", batchSize=" + batchSize +
+                ", nextReputFromOffset=" + nextReputFromOffset +
+            '}';
     }
 }

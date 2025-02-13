@@ -28,6 +28,8 @@ public class SendResult {
     private String offsetMsgId;
     private String regionId;
     private boolean traceOn = true;
+    private byte[] rawRespBody;
+    private String recallHandle;
 
     public SendResult() {
     }
@@ -125,9 +127,25 @@ public class SendResult {
         this.offsetMsgId = offsetMsgId;
     }
 
+    public String getRecallHandle() {
+        return recallHandle;
+    }
+
+    public void setRecallHandle(String recallHandle) {
+        this.recallHandle = recallHandle;
+    }
+
     @Override
     public String toString() {
         return "SendResult [sendStatus=" + sendStatus + ", msgId=" + msgId + ", offsetMsgId=" + offsetMsgId + ", messageQueue=" + messageQueue
-            + ", queueOffset=" + queueOffset + "]";
+            + ", queueOffset=" + queueOffset + ", recallHandle=" + recallHandle + "]";
+    }
+
+    public void setRawRespBody(byte[] body) {
+        this.rawRespBody = body;
+    }
+
+    public byte[] getRawRespBody() {
+        return rawRespBody;
     }
 }

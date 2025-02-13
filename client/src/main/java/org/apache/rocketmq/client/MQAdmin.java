@@ -22,29 +22,31 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+import java.util.Map;
+
 /**
  * Base interface for MQ management
  */
 public interface MQAdmin {
     /**
-     * Creates an topic
-     *
-     * @param key accesskey
+     * Creates a topic
+     *  @param key accessKey
      * @param newTopic topic name
      * @param queueNum topic's queue number
+     * @param attributes
      */
-    void createTopic(final String key, final String newTopic, final int queueNum)
+    void createTopic(final String key, final String newTopic, final int queueNum, Map<String, String> attributes)
         throws MQClientException;
 
     /**
-     * Creates an topic
-     *
-     * @param key accesskey
+     * Creates a topic
+     *  @param key accessKey
      * @param newTopic topic name
      * @param queueNum topic's queue number
      * @param topicSysFlag topic system flag
+     * @param attributes
      */
-    void createTopic(String key, String newTopic, int queueNum, int topicSysFlag)
+    void createTopic(String key, String newTopic, int queueNum, int topicSysFlag, Map<String, String> attributes)
         throws MQClientException;
 
     /**
@@ -80,15 +82,6 @@ public interface MQAdmin {
      * @return the time in microseconds
      */
     long earliestMsgStoreTime(final MessageQueue mq) throws MQClientException;
-
-    /**
-     * Query message according to message id
-     *
-     * @param offsetMsgId message id
-     * @return message
-     */
-    MessageExt viewMessage(final String offsetMsgId) throws RemotingException, MQBrokerException,
-        InterruptedException, MQClientException;
 
     /**
      * Query messages

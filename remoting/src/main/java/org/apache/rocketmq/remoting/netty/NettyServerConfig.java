@@ -17,7 +17,13 @@
 package org.apache.rocketmq.remoting.netty;
 
 public class NettyServerConfig implements Cloneable {
-    private int listenPort = 8888;
+
+    /**
+     * Bind address may be hostname, IPv4 or IPv6.
+     * By default, it's wildcard address, listening all network interfaces.
+     */
+    private String bindAddress = "0.0.0.0";
+    private int listenPort = 0;
     private int serverWorkerThreads = 8;
     private int serverCallbackExecutorThreads = 0;
     private int serverSelectorThreads = 3;
@@ -30,7 +36,11 @@ public class NettyServerConfig implements Cloneable {
     private int writeBufferHighWaterMark = NettySystemConfig.writeBufferHighWaterMark;
     private int writeBufferLowWaterMark = NettySystemConfig.writeBufferLowWaterMark;
     private int serverSocketBacklog = NettySystemConfig.socketBacklog;
+    private boolean serverNettyWorkerGroupEnable = true;
     private boolean serverPooledByteBufAllocatorEnable = true;
+
+    private boolean enableShutdownGracefully = false;
+    private int shutdownWaitTimeSeconds = 30;
 
     /**
      * make install
@@ -40,6 +50,14 @@ public class NettyServerConfig implements Cloneable {
      * --host=x86_64-linux-gnu \ --build=x86_64-pc-linux-gnu \ --without-gd
      */
     private boolean useEpollNativeSelector = false;
+
+    public String getBindAddress() {
+        return bindAddress;
+    }
+
+    public void setBindAddress(String bindAddress) {
+        this.bindAddress = bindAddress;
+    }
 
     public int getListenPort() {
         return listenPort;
@@ -139,7 +157,7 @@ public class NettyServerConfig implements Cloneable {
 
     @Override
     public Object clone() throws CloneNotSupportedException {
-        return (NettyServerConfig) super.clone();
+        return super.clone();
     }
 
     public int getWriteBufferLowWaterMark() {
@@ -156,5 +174,29 @@ public class NettyServerConfig implements Cloneable {
 
     public void setWriteBufferHighWaterMark(int writeBufferHighWaterMark) {
         this.writeBufferHighWaterMark = writeBufferHighWaterMark;
+    }
+
+    public boolean isServerNettyWorkerGroupEnable() {
+        return serverNettyWorkerGroupEnable;
+    }
+
+    public void setServerNettyWorkerGroupEnable(boolean serverNettyWorkerGroupEnable) {
+        this.serverNettyWorkerGroupEnable = serverNettyWorkerGroupEnable;
+    }
+
+    public boolean isEnableShutdownGracefully() {
+        return enableShutdownGracefully;
+    }
+
+    public void setEnableShutdownGracefully(boolean enableShutdownGracefully) {
+        this.enableShutdownGracefully = enableShutdownGracefully;
+    }
+
+    public int getShutdownWaitTimeSeconds() {
+        return shutdownWaitTimeSeconds;
+    }
+
+    public void setShutdownWaitTimeSeconds(int shutdownWaitTimeSeconds) {
+        this.shutdownWaitTimeSeconds = shutdownWaitTimeSeconds;
     }
 }

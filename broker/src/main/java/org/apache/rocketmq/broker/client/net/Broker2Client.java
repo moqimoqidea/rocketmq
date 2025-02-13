@@ -17,6 +17,12 @@
 package org.apache.rocketmq.broker.client.net;
 
 import io.netty.channel.Channel;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
@@ -28,31 +34,26 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.message.MessageQueueForC;
-import org.apache.rocketmq.common.protocol.RequestCode;
-import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.body.GetConsumerStatusBody;
-import org.apache.rocketmq.common.protocol.body.ResetOffsetBody;
-import org.apache.rocketmq.common.protocol.body.ResetOffsetBodyForC;
-import org.apache.rocketmq.common.protocol.header.CheckTransactionStateRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumerStatusRequestHeader;
-import org.apache.rocketmq.common.protocol.header.NotifyConsumerIdsChangedRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ResetOffsetRequestHeader;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.concurrent.ConcurrentMap;
+import org.apache.rocketmq.remoting.protocol.RequestCode;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.GetConsumerStatusBody;
+import org.apache.rocketmq.remoting.protocol.body.ResetOffsetBody;
+import org.apache.rocketmq.remoting.protocol.body.ResetOffsetBodyForC;
+import org.apache.rocketmq.remoting.protocol.header.CheckTransactionStateRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.GetConsumerStatusRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.NotifyConsumerIdsChangedRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.ResetOffsetRequestHeader;
+import org.apache.rocketmq.store.exception.ConsumeQueueException;
 
 public class Broker2Client {
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
+    private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
 
     public Broker2Client(BrokerController brokerController) {
@@ -76,7 +77,7 @@ public class Broker2Client {
     }
 
     public RemotingCommand callClient(final Channel channel,
-                                      final RemotingCommand request
+        final RemotingCommand request
     ) throws RemotingSendRequestException, RemotingTimeoutException, InterruptedException {
         return this.brokerController.getRemotingServer().invokeSync(channel, request, 10000);
     }
@@ -101,23 +102,23 @@ public class Broker2Client {
         }
     }
 
-    public RemotingCommand resetOffset(String topic, String group, long timeStamp, boolean isForce) {
+    public RemotingCommand resetOffset(String topic, String group, long timeStamp, boolean isForce) throws RemotingCommandException {
         return resetOffset(topic, group, timeStamp, isForce, false);
     }
 
     public RemotingCommand resetOffset(String topic, String group, long timeStamp, boolean isForce,
-                                       boolean isC) {
+        boolean isC) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);
         if (null == topicConfig) {
             log.error("[reset-offset] reset offset failed, no topic in this broker. topic={}", topic);
-            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setCode(ResponseCode.TOPIC_NOT_EXIST);
             response.setRemark("[reset-offset] reset offset failed, no topic in this broker. topic=" + topic);
             return response;
         }
 
-        Map<MessageQueue, Long> offsetTable = new HashMap<MessageQueue, Long>();
+        Map<MessageQueue, Long> offsetTable = new HashMap<>();
 
         for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             MessageQueue mq = new MessageQueue();
@@ -135,8 +136,11 @@ public class Broker2Client {
 
             long timeStampOffset;
             if (timeStamp == -1) {
-
-                timeStampOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
+                try {
+                    timeStampOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
+                } catch (ConsumeQueueException e) {
+                    throw new RemotingCommandException("Failed to get max offset in queue", e);
+                }
             } else {
                 timeStampOffset = this.brokerController.getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp);
             }
@@ -237,8 +241,7 @@ public class Broker2Client {
             RemotingCommand.createRequestCommand(RequestCode.GET_CONSUMER_STATUS_FROM_CLIENT,
                 requestHeader);
 
-        Map<String, Map<MessageQueue, Long>> consumerStatusTable =
-            new HashMap<String, Map<MessageQueue, Long>>();
+        Map<String, Map<MessageQueue, Long>> consumerStatusTable = new HashMap<>();
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
             this.brokerController.getConsumerManager().getConsumerGroupInfo(group).getChannelInfoTable();
         if (null == channelInfoTable || channelInfoTable.isEmpty()) {
